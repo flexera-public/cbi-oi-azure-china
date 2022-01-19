@@ -20,6 +20,13 @@ permission "perm_read_creds" do
   resources "rs_cm.credentials"
 end
 
+parameter "param_optima_api_host" do
+  type "string"
+  label "Optima Bill Upload API Host"
+  description "Optima Bill Upload API Host"
+  allowed_values ["api.optima.flexeraeng.com","api.optima-eu.flexeraeng.com"]
+end
+
 # Could maybe get this from the EA key, but for now just ask for it
 parameter "param_enrollment" do
   type "string"
@@ -54,7 +61,12 @@ credentials "azure_ea_auth" do
   tags "provider=azure_ea_china"
 end
 
-auth "auth_rs", type: "rightscale"
+credentials "auth_rs" do
+  schemes "oauth2"
+  label "flexera"
+  description "Select FlexeraOne OAuth2 credentials"
+  tags "provider=flexera"
+end
 
 # Build the API request object dynamically because we need to
 #  calculate the startdate and enddate based on today
@@ -93,18 +105,18 @@ end
 
 datasource "create_bill_upload" do
   request do
-    run_script $cbi_create_bill_upload, rs_org_id, $param_bill_connect_id, $param_period
+    run_script $cbi_create_bill_upload, rs_org_id, $param_bill_connect_id, $param_period, $param_optima_api_host
   end
 end
 
 script "cbi_create_bill_upload", type: "javascript" do
-  parameters "org_id", "bill_connect_id", "period"
+  parameters "org_id", "bill_connect_id", "period", "param_optima_api_host"
   result "request"
   code <<-EOS
   var request = {
     auth: "auth_rs",
     verb: "POST",
-    host: "optima-bill-upload-front.indigo.rightscale.com",
+    host: param_optima_api_host,
     path: "/optima/orgs/" + org_id + "/billUploads",
     body_fields: {
       "billConnectId": bill_connect_id,
@@ -120,18 +132,18 @@ end
 
 datasource "upload" do
   request do
-    run_script $cbi_upload, rs_org_id, $download, $param_period, $create_bill_upload
+    run_script $cbi_upload, rs_org_id, $download, $param_period, $create_bill_upload, $param_optima_api_host
   end
 end
 
 script "cbi_upload", type: "javascript" do
-  parameters "org_id", "download", "period" , "create_bill_upload"
+  parameters "org_id", "download", "period" , "create_bill_upload", "param_optima_api_host"
   result "request"
   code <<-EOS
   var request = {
     auth: "auth_rs",
     verb: "POST",
-    host: "optima-bill-upload-front.indigo.rightscale.com",
+    host: param_optima_api_host,
     //path: "/optima/orgs/" + org_id + "/billUploads/a6c33331-d8b2-11ea-9291-b62039d83b87/files/" + period + '.csv',
     path: "/optima/orgs/" + org_id + "/billUploads/" + create_bill_upload["id"] + '/files/' + period + '.csv',
     headers: {
@@ -144,18 +156,18 @@ end
 
 datasource "commit" do
   request do
-    run_script $cbi_commit, rs_org_id, $upload, $create_bill_upload
+    run_script $cbi_commit, rs_org_id, $upload, $create_bill_upload, $param_optima_api_host
   end
 end
 
 script "cbi_commit", type: "javascript" do
-  parameters "org_id", "upload", "create_bill_upload"
+  parameters "org_id", "upload", "create_bill_upload", "param_optima_api_host"
   result "request"
   code <<-EOS
   var request = {
     auth: "auth_rs",
     verb: "POST",
-    host: "optima-bill-upload-front.indigo.rightscale.com",
+    host: param_optima_api_host,
     path: "/optima/orgs/" + org_id + "/billUploads/" + create_bill_upload["id"] + '/operations',
     //path: "/optima/orgs/" + org_id + "/billUploads/4d5acb39-d8ed-11ea-8c5a-4e18226d1adc/operations",
     headers: {
